@@ -34,6 +34,6 @@ Create an HTML file and include a script tag that points to your app - you're do
 You have to do this yourself, unfortunately. The reasoning here is that in order to do this properly I would have to begin flirting with Sass or Tailwind and other CSS frameworks and
 the integration work would be super annoying. Unless I change my mind, this goes against the philosophy of this project, which is to have a single file and that's it.
 
-That philosophy is based on that of (read: stolen from) Sean Barrett's who created his `nothings` in order to create a general file he can always use in a project without having to worry about whether it works and the file was merely just a bunch of useful stuff that replaces or augments some problems of the C language.
+That philosophy is based on that of (read: stolen from) Sean Barrett's who created his `nothings` in order to create some general functionality he can always use in a project without having to worry about whether it works and the file was merely just a bunch of useful stuff that replaces or augments some features of the C language and the std library.
 
 [^1] It's just about the philosophy. Not literally like C.
