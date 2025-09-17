@@ -1,4 +1,4 @@
-# CJS - C-style JavaScript
+# CJS - C-style JavaScript [^1]
 
 JS framework that takes inspiration from the purely procedural style of old C programming and tries to offer simple features which can be modularized at will.
 Any custom logic may be injected into this system, styles, transitions, animations, net code, anything can be well integrated since CJS is just functions and objects.
@@ -23,9 +23,17 @@ It's early for this project so I do not yet know how this could be distributed, 
 CJS tracks existing markup and styles and tells you when you have made a mistake. The level of strictness is fairly high:
 - no element ID duplicates - every markup defined in CJS is tracked via its id, yes, each element requires an ID.
 - each style can be locked, during development CJS checks the resulting styles using getComputedStyle() and can throw when the resulting style is not what you expected.
-- each style has to target something, otherwise CJS throws.
+- each style has to target something, otherwise CJS throws. - there is a global flag that disables this if it annoys you
 
 ## How it works
 
-Modules:
-@todo
+Create an HTML file and include a script tag that points to your app - you're done.
+
+## No style polyfills
+
+You have to do this yourself, unfortunately. The reasoning here is that in order to do this properly I would have to begin flirting with Sass or Tailwind and other CSS frameworks and
+the integration work would be super annoying. Unless I change my mind, this goes against the philosophy of this project, which is to have a single file and that's it.
+
+That philosophy is based on that of (read: stolen from) Sean Barrett's who created his `nothings` in order to create a general file he can always use in a project without having to worry about whether it works and the file was merely just a bunch of useful stuff that replaces or augments some problems of the C language.
+
+[^1] It's just about the philosophy. Not literally like C.

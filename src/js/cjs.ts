@@ -156,6 +156,10 @@ type State = {
   mElements: MathMLElement[],
 }
 
+const Errors = {
+  onMarkupMiss: true // when a style does not find the targetted query in the DOM; Which is kinda stupid if all your markup
+}
+
 
 
 
