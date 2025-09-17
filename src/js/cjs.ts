@@ -143,17 +143,17 @@ interface Vector2 {
 =============================
 */
 
-class Ticker {
-  static 
-  static 
+function Tick() {
+  
 }
-
+ 
 // NOW - this is the global state object for the whole framework, stuff is just there and you can use it however you want
 // - no bullshit patterns getting in the way
 type CJSState = {
   hElements: HTMLElement[],
   sElements: SVGElement[],
   mElements: MathMLElement[],
+
   delta: number,
   lastTime: number,
 }
