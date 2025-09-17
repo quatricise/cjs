@@ -37,3 +37,9 @@ the integration work would be super annoying. Unless I change my mind, this goes
 That philosophy is based on that of (read: stolen from) Sean Barrett's who created his `nothings` in order to create some general functionality he can always use in a project without having to worry about whether it works and the file was merely just a bunch of useful stuff that replaces or augments some features of the C language and the std library.
 
 [^1]: It's just about the philosophy. Not literally like C.
+
+## Benefits and downsides of code over markup
+
+People often talk about simplicity in programming, especially in the web. I am all for simplicity but only a specific kind. One that always allows a project to grow out of its initial state into something bigger, and I think any project should be allowed that from the start. HTML was not designed for the complex websites that we have today. Reading HTML is fun and easy if you have up to a few levels of nesting and there isn't much complicated logic driving the website. It is not fun and intuitive to read once you are 15-30 levels deep and any small change may break your program, while HTML remains permissive and won't error, leading to the much unnecessary hunt for the misplaced paragraph, closing tag or missing className.
+
+Making changes to markup is deeply frustrating, leading often to a kind of hybrid approach where some markup is done as HTML, but some more complex things are defined procedurally. Why not just go full procedural then? Proper code can be very minimal and still allow you simple markup, while keeping all your definitions at the same place and allowing for error checking.
