@@ -36,4 +36,4 @@ the integration work would be super annoying. Unless I change my mind, this goes
 
 That philosophy is based on that of (read: stolen from) Sean Barrett's who created his `nothings` in order to create some general functionality he can always use in a project without having to worry about whether it works and the file was merely just a bunch of useful stuff that replaces or augments some features of the C language and the std library.
 
-[^1] It's just about the philosophy. Not literally like C.
+[^1]: It's just about the philosophy. Not literally like C.
