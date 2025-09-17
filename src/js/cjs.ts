@@ -26,6 +26,26 @@ Ticker - What syncs everything together
 */
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /** Query the document to get a single element matching the query (standard querySelector) */
 function $h(query: string): HTMLElement {
   const element = document.querySelector(query);
@@ -117,15 +137,24 @@ interface Vector2 {
 
 
 
-
-
+/* 
+=============================
+        GLOBAL STUFF
+=============================
+*/
 
 class Ticker {
   static delta: number = 0
   static lastTime: number = 0
 }
 
-
+// NOW - this is the global state object for the whole framework, stuff is just there and you can use it however you want
+// - no bullshit patterns getting in the way
+type State = {
+  hElements: HTMLElement[],
+  sElements: SVGElement[],
+  mElements: MathMLElement[],
+}
 
 
 
@@ -162,9 +191,6 @@ interface NCSSAction {
   layerName: string | null,
 };
 
-// NOW - this is the global state object for the whole framework, stuff is just there and you can use it however you want
-// - no bullshit patterns getting in the way
-const State = {}
 
 
 const NCSSFlags = {
@@ -195,9 +221,6 @@ function NCSSRegisterAction(name: string, style: NCSSStyle, layerName: string | 
 };
 
 
-
-// 07-09-2025:
-// I think this should not have any compound properties, it would be a nightmare having to deal with those and how it interacts with my code
 
 // also: the user can customize this function to contain any default styles, but it should be communicated this is expected from NCSS and changing it could make it difficult for others to deal with their code
 // also 2: I could make the compound properties (padding or border) forbidden in NCSS, which could annoy people but they'd get used to it. It's just a little bit of extra typing.
@@ -364,7 +387,8 @@ function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], sty
 //set into the map by element ids
 const HTMLElements: Map<string, HTMLElement> = new Map()
 
-function HTML(tagname: string, id: string, data: {c?: [string, string][], a?: [string, string][], d?: [string, string][]}): HTMLElement {
+/** Produces HTML markup. */
+function H(tagname: string, id: string, data: {c?: [string, string][], a?: [string, string][], d?: [string, string][]}): HTMLElement {
   const element = document.createElement(tagname)
 
   data.a?.forEach(pair => element.setAttribute(pair[0], pair[1]))
@@ -388,10 +412,10 @@ function HTMLBuild() {
   }
   const cards: HTMLElement[] = []
 
-  HTML("a", "big-header-button", {d: [["cms-integration", "true"]]})
+  H("a", "big-header-button", {d: [["cms-integration", "true"]]})
   
   for(let i = 0; i < 5; ++i) {
-    cards.push(HTML("div", "user-card-" + i, {}))
+    cards.push(H("div", "user-card-" + i, {}))
   }
 
   // do something with the cards now, put into global state, whatever
@@ -404,53 +428,6 @@ function HTMLBuild() {
     color: "red",
   })
 }
-
-
-function NCSSTest1() {
-  NCSSBegin()
-
-  NCSSLayerBegin("main")
-
-  NCSS(["main"], {
-    color: "green",
-  })
-  NCSSLayerEnd("main")
-
-  NCSSLayerBegin("section-hero")
-
-  NCSS(["section-hero"], {
-    display: "flex",
-    gap: "20px",
-    justifyContent: "center",
-    width: "100%",
-    backgroundColor: "blue",
-    height: "100px",
-  })
-
-  // now this is my big thing, you can insert any CSS selectors
-  // this also uses layers if one is active at the 'global' NCSS level
-  // each sub-rule has to be attached to an ID-identified element that has been established previously, and ideally before a new one is established in the chain, yes, for transparency !
-  // the subrule now fucks up my single-action type system, so I might have to turn actions into a discrim. union
-  NCSSSubRule(["section-hero"], ["svg", "svg.icon"], {
-    width: "100%",
-    height: "100%",
-  }, 
-  {protect: true})
-
-  NCSS(["shitty-text"], {
-    color: "pink",
-  })
-
-  NCSS(["section-detail"], {
-    display: "grid",
-    gridAutoFlow: "row",
-  })
-
-  NCSSLayerEnd("section-hero")
-
-  NCSSBuild()
-}
-
 
 
 // This kind of composition seems very exciting

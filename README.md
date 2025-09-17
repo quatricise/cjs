@@ -9,4 +9,6 @@ CJS is not a builder. It's just front-end code that runs when you open a webpage
 
 ## No dependencies
 
-CJS has no dependencies whatsoever and it not installed via any package manager. It's just code that you put into your project.
+CJS is only TypeScript code. It has no dependencies whatsoever and it not installed via any package manager. It's just code that you put into your project. I am building CJS in TypeScript and build it using a simple builder that uses Vite and static-kit (https://github.com/vojtaholik/static-kit), this does not mean that CJS will require any of this.
+
+It's early for this project so I do not yet know how this could be distributed, but ideally, to keep to the spirit of C - no package managers.
