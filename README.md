@@ -16,11 +16,16 @@ CJS is only TypeScript code. It has no dependencies whatsoever and it not instal
 I am building CJS in TypeScript and use a simple builder called static-kit (https://github.com/vojtaholik/static-kit) that uses Vite.
 HOWEVER! this does not mean that CJS will require any of this. It won't - it's TS and you compile it. That's it.
 
-It's early for this project so I do not yet know how this could be distributed, but ideally, to keep to the spirit of C - no package managers.
+It's early for this project so I do not yet know how this could be distributed, but ideally, to keep things simple - no package managers.
 
 ## Error handling
 
 CJS tracks existing markup and styles and tells you when you have made a mistake. The level of strictness is fairly high:
 - no element ID duplicates - every markup defined in CJS is tracked via its id, yes, each element requires an ID.
-- each style can be locked, during development CJS checks the resultings styles using getComputedStyle() and can throw when the resulting style is not what you expected.
-- each style has to target something, otherwise CJS throws error.
+- each style can be locked, during development CJS checks the resulting styles using getComputedStyle() and can throw when the resulting style is not what you expected.
+- each style has to target something, otherwise CJS throws.
+
+## How it works
+
+Modules:
+@todo
