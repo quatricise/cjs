@@ -144,17 +144,21 @@ interface Vector2 {
 */
 
 class Ticker {
-  static delta: number = 0
-  static lastTime: number = 0
+  static 
+  static 
 }
 
 // NOW - this is the global state object for the whole framework, stuff is just there and you can use it however you want
 // - no bullshit patterns getting in the way
-type State = {
+type CJSState = {
   hElements: HTMLElement[],
   sElements: SVGElement[],
   mElements: MathMLElement[],
+  delta: number,
+  lastTime: number,
 }
+
+const state: CJSState = {}
 
 const Errors = {
   onMarkupMiss: true // when a style does not find the targetted query in the DOM; Which is kinda stupid if all your markup
