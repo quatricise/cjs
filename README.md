@@ -1,3 +1,6 @@
+# Important note
+Please do not try to use this, this is experimental package and I will probably rewrite it many times.
+
 # CJS - C-style JavaScript [^1]
 
 JS framework that takes inspiration from the purely procedural style of old C programming and tries to offer simple features which can be modularized at will.

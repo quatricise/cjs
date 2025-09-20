@@ -1,0 +1,1016 @@
+/* 
+================================================
+                  CJS - GOALS
+================================================
+
+LOCALITY OF BEHAVIOR
+Carson Gross's idea. I am strongly in favour of this, define behavior that is pertinent to the module or part that uses it and not define it elsewhere unless
+it is a universal construct.
+
+MODULES
+HTML - H()
+Style - S()
+Animate - A()
+Capture - C()
+
+H, S, A, C - shorthand gestures to clean up the visual mess induced by javascript into markup.
+
+Ticker - What syncs everything together
+
+
+// this is part of a larger effort to create a sensible JS framework, combining Animate and Capture and HTML and NCSS classes into a system with a centralized state
+// somewhat like a game, also where animations and everything is done per-frame
+// Capture.ts already runs per frame, except there is a slight issue that delta-time is a complicated thing.
+// also doing animations without the native tweens and element.animate could be too painful. Except not, I've done it before on Star Lib.
+
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Query the document to get a single element matching the query (standard querySelector) */
+function $h(query: string): HTMLElement {
+  const element = document.querySelector(query);
+  if (!element || element instanceof HTMLElement === false) {
+    throw new Error("$h: No HTMLElement found by query: " + query);
+	}
+  return element as HTMLElement;
+}
+
+/** Query the document to get a single element matching the query (similar to querySelectorAll, but returns an array, instead of Nodelist) */
+function $ha(query: string, errors: boolean = true): HTMLElement[] {
+  const elements = Array.from(document.querySelectorAll(query));
+
+  if (!elements || elements.length === 0) {
+    if (errors) {
+      console.error("$ha: Error", elements)
+      throw new Error("$ha: No HTMLElements found by query: ${query}. \n Maybe you wanted to look for MathMLElement or SVGElement? If so, use $m/$ma or $s/$sa functions instead.");
+    } 
+    else {
+      return [];
+    }
+  }
+    
+  if(elements.every((e) => e instanceof HTMLElement) === false) {
+    if(errors) {
+      console.error("$ha: Error", elements)
+      throw new Error("$ha: Not every element found is an HTMLElement.")
+    } 
+    else {
+      return []
+    }
+  }
+  return elements;
+}
+
+/** Query the document to get a single element matching the query (standard querySelector) */
+function $s(query: string): SVGElement {
+  const element = document.querySelector(query)
+  if(!element || element instanceof SVGElement === false) throw new Error("No SVGElement found by query: " + query)
+  return element as SVGElement
+}
+
+/** Query the document to get a single element matching the query (standard querySelector) */
+function $m(query: string): MathMLElement {
+  const element = document.querySelector(query)
+  if(!element || element instanceof MathMLElement === false) throw new Error("No MathMLElement found by query: " + query)
+  return element as MathMLElement
+}
+
+function clamp(value: number, min: number, max: number) {
+  //does not guard against min being larger than max, but don't be an idiot and make sure your inputs are correct
+  return Math.max(Math.min(value, max), min)
+}
+
+function sum(...values: number[]): number {
+  let accumulator = 0;
+  values.forEach(v => accumulator += v)
+  return accumulator
+}
+
+function assert(predicate: boolean, errorMsg: string) {
+  if(!predicate) throw new Error(errorMsg)
+}
+
+function entries<T>(obj: Partial<T>): [keyof T, T[keyof T] | undefined][] {
+  return Object.entries(obj) as [keyof T, T[keyof T] | undefined][]
+}
+
+function camelToDashed(str: string): string {
+  return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
+interface Vector2 {
+  x: number,
+  y: number
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* 
+=============================
+        GLOBAL STUFF
+=============================
+*/
+
+function Tick() {
+  
+}
+ 
+// NOW - this is the global state object for the whole framework, stuff is just there and you can use it however you want
+// - no bullshit patterns getting in the way
+type CJSState = {
+  hElements: HTMLElement[],
+  sElements: SVGElement[],
+  mElements: MathMLElement[],
+
+  delta: number,
+  lastTime: number,
+}
+
+const state: CJSState = {}
+
+const Errors = {
+  onMarkupMiss: true // when a style does not find the targetted query in the DOM; Which is kinda stupid if all your markup
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+type NCSSStyle = Partial<CSSStyleDeclaration>
+type NCSSActionType = "ID_RULE" | "ID_SUB_RULE"
+
+interface NCSSAction {
+  type: NCSSActionType, //@refactor later - so far I'm not 100% convinced, but... NCSSAction ought to be a union type, if I am to add more actions later.
+
+  // currently unused I think
+  id: number,
+
+  // I think this is the element id query you input into NCSS(), NCSS throws if there is not element found with that id.
+  // NCSS is only a styling engine, it does not touch markup other than by adding style info.
+  name: string,
+
+  style: NCSSStyle,
+
+  layerName: string | null,
+};
+
+
+
+const NCSSFlags = {
+  beganStyling: false,
+  endedStyling: false,
+}
+
+interface NCSSSubRuleOptions {
+  protect?: boolean
+}
+
+const NCSSLayers: string[] = []
+let NCSSLayerCurrent: string | null = null
+
+// I think elements tracked internally by NCSS should have numerical ids so string parsing doesn't have to be done.
+// This is an array and not Set, because I want to throw when you try to add the same id again. Set<> would just quietly swallow the mistake.
+// 11-09-2025 I do not use the IDs for anything yet. Might actually remove them, who knows.
+const NCSSActions: NCSSAction[] = [];
+let NCSSNextActionIndex: number = 0
+
+function NCSSRegisterAction(name: string, style: NCSSStyle, layerName: string | null, type: NCSSActionType) {
+  assert(NCSSActions.find(action => action.name === name) === undefined, "Name already exists: " + name)
+  assert(document.querySelector("#" + name) != null, `$h found not element with id: #${name}`)
+
+  const id = NCSSNextActionIndex
+  NCSSNextActionIndex++
+  NCSSActions.push({id: id, name: name, style: style, layerName: layerName ?? null, type: type})
+};
+
+
+
+// also: the user can customize this function to contain any default styles, but it should be communicated this is expected from NCSS and changing it could make it difficult for others to deal with their code
+// also 2: I could make the compound properties (padding or border) forbidden in NCSS, which could annoy people but they'd get used to it. It's just a little bit of extra typing.
+function NCSSApplyBase(element: HTMLElement) {
+
+  //this is not how it's done, it will drop these first into each LAYER-ELEMENT-THINGY and then potentially replace these base ones by the new ones supplied
+  const s = element.style 
+
+  // note: try to make these groups go alphabetically, such as "font(F)amily, font(S)ize, font(W)eight", or TOP-RIGHT-BOTTOM-LEFT
+
+  s.backgroundColor = "white";
+  s.color =           "black";
+
+  s.paddingTop =      "0";
+  s.paddingRight =    "0";
+  s.paddingBottom =   "0";
+  s.paddingLeft =     "0";
+
+  s.marginTop =       "0";
+  s.marginRight =     "0";
+  s.marginBottom =    "0";
+  s.marginLeft =      "0";
+
+  s.borderTop =       "0";
+  s.borderRight =     "0";
+  s.borderBottom =    "0";
+  s.borderLeft =      "0";
+
+  s.fontFamily =      "serif";
+  s.fontSize =        "1rem";
+  s.fontStyle =       "normal";
+  s.fontWeight =      "400";
+
+  s.display =         "initial";
+  s.alignItems =      "flex-start";
+  s.justifyContent =  "flex-start";
+
+  s.position =        "static";
+  s.top =             "0";
+  s.right =           "0";
+  s.bottom =          "0";
+  s.left =            "0";
+}
+
+function NCSS(queries: string[], style: NCSSStyle) {
+  assert(NCSSFlags.beganStyling, "NCSS: Forgot to call 'NCSSBegin()'.")
+  assert(!NCSSFlags.endedStyling, "NCSS: Already called 'NCSSBuild().'.")
+  assert(Object.keys(style).length !== 0, "NCSS: No empty styles allowed.")
+  
+	queries.forEach(query => {
+    NCSSRegisterAction(query, style, NCSSLayerCurrent, "ID_RULE")
+  })
+}
+
+function NCSSBegin() {
+  NCSSFlags.beganStyling = true
+}
+
+/** Runs before generating the stylesheet. Checks for duplicate element ids in the document. */
+function NCSSCheckHTML() {
+  const elements = $ha("*")
+  const ids = new Set<string>()
+  const duplicateIds: string[] = []
+
+  elements.forEach(el => {
+    const sizeBefore = ids.size
+    ids.add(el.id)
+    if(el.id && sizeBefore === ids.size) {
+      duplicateIds.push(el.id)
+    }
+  })
+  assert(duplicateIds.length === 0, `The HTML markup of the Document contains duplicate IDs, please fix. \n Ids in question: \n ${duplicateIds.map(id => `"${id}"`).join("\n")}`)
+}
+
+// runs the styling function
+// so far it is quite dumb so it creates a layer block even if a layer is active, but I don't know if that's a problem yet.
+function NCSSBuild() {
+  assert(NCSSFlags.endedStyling === false, "Already build the stylesheet. Cannot call NCSSBuild() again.")
+  NCSSCheckHTML()
+  NCSSFlags.endedStyling = true
+  const stylesheet = new CSSStyleSheet()
+  const layers: Set<string> = new Set()
+
+  NCSSActions.forEach(action => {
+    layers.add(action.layerName ?? action.name)
+  })
+
+
+  const layerRule = `@layer ${Array.from(layers).join(", ")};`
+  stylesheet.insertRule(layerRule)
+
+  NCSSActions.forEach(action => {
+    const layerName = action.layerName ?? action.name
+    const elementName = action.name
+    let styleString: string = ""
+
+    for(const [key, value] of entries<NCSSStyle>(action.style)) {
+      styleString += `${(camelToDashed(String(key)))}: ${action.style[key]}; \n`
+    }
+
+    const rule = `
+      @layer ${layerName} {
+        #${elementName} {
+          ${styleString}
+        }
+      }
+    `
+    // !important police: this shit will be slow as hell
+    assert(rule.includes("!important") === false, `No "!important" rules allowed, it breaks control flow in NCSS.`)
+
+    stylesheet.insertRule(rule)
+  })
+
+  document.adoptedStyleSheets.push(stylesheet)
+}
+
+// is missing policing for wrong strings with incorrect characters in them, I should limit to [a-z, 0-9, _-] and that's it??
+function NCSSLayerBegin(layerName: string) {
+  assert(NCSSLayerCurrent === null, `Forgot to end previous layer: '${NCSSLayerCurrent}'`)
+  assert(layerName !== "" && layerName !== null, "Incorrect layer name: Cannot be empty string or null.")
+  assert(NCSSLayers.find(l => l === layerName) === undefined, `This layerName already exists: '${layerName}'`)
+  assert(layerName.includes(" ") === false, `No whitespace characters allowed in layerName: ${layerName}`)
+
+  NCSSLayerCurrent = layerName
+  NCSSLayers.push(layerName)
+}
+
+function NCSSLayerEnd(layerName: string) {
+  assert(layerName === NCSSLayerCurrent, `Incorrect layer name: ${layerName}. Current layer is: ${NCSSLayerCurrent}`)
+
+  NCSSLayerCurrent = null
+}
+
+function NCSSSubRule(idBasedQueries: string[], subordinateQueries: string[], style: NCSSStyle, options: NCSSSubRuleOptions) {
+  const missingQueries: string[] = []
+  const lengthCheck: Set<string> = new Set()
+
+  // this is very inefficient search code
+  idBasedQueries.forEach(query => {
+    lengthCheck.add(query)
+    const match = NCSSActions.find(action => action.name === query)
+    if(!match) {
+      missingQueries.push(query)
+    }
+  })
+  
+  assert(missingQueries.length === 0, `Not all queries found in NCSSActions[]. These are missing: ${missingQueries.map(q=>`'${q}'`).join(", ")}`)
+  assert(idBasedQueries.length === lengthCheck.size, `Duplicate queries.`) //could be more verbose
+
+  idBasedQueries.forEach(query => {
+    NCSSRegisterAction(query, style, NCSSLayerCurrent, "ID_SUB_RULE")
+  })
+}
+
+
+
+
+
+// HTML framework into the mix because why not xddd
+// I need to police everything, it still kinda sucks that you can't procedurally work with layout, NCSS probably is not the final thing I need. 
+// I actually need a framework that works like C
+
+
+//set into the map by element ids
+const HTMLElements: Map<string, HTMLElement> = new Map()
+
+/** Produces HTML markup. */
+function H(tagname: string, id: string, data: {c?: [string, string][], a?: [string, string][], d?: [string, string][]}): HTMLElement {
+  const element = document.createElement(tagname)
+
+  data.a?.forEach(pair => element.setAttribute(pair[0], pair[1]))
+  data.d?.forEach(pair => element.dataset[pair[0]] = pair[1])
+  data.c?.forEach(pair => element.classList.add(pair[0], pair[1]))
+
+  HTMLElements.set(id, element)
+
+  return element
+}
+
+// this shit is like NCSSBuild.
+// It is just the build function and you can decide to re-run this at your convenience.
+// However, if this destroys your HTML, it means all logic has to be rerun and no references work,
+// that is problematic
+function HTMLBuild() {
+  
+  //this is a mock global state for demonstration
+  const globalState = {
+    cards: [] as HTMLElement[]
+  }
+  const cards: HTMLElement[] = []
+
+  H("a", "big-header-button", {d: [["cms-integration", "true"]]})
+  
+  for(let i = 0; i < 5; ++i) {
+    cards.push(H("div", "user-card-" + i, {}))
+  }
+
+  // do something with the cards now, put into global state, whatever
+  // this kinda sucks, idk how to police this, but I guess I just define a Struct for the state and add something once I need it
+  globalState.cards = cards
+
+  NCSS(["big-header-button"], {
+    display: "flex",
+    flexDirection: "column",
+    color: "red",
+  })
+}
+
+
+// This kind of composition seems very exciting
+
+const otherStyle: Partial<CSSStyleDeclaration> = {
+  pointerEvents: "none"
+}
+const otherStyle2: Partial<CSSStyleDeclaration> = {
+  userSelect: "none",
+  accentColor: "red"
+}
+NCSS(["section-hero"], {
+  width: "100px",
+  height: "100px",
+  borderRadius: "10px",
+  backgroundColor: "rgb(230, 0, 0)",
+  color: "blue",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  textAlign: "center",
+  ...otherStyle,
+  ...otherStyle2
+})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+type CaptureSegment = {
+  height: number
+  scroll: number
+  hooks:  CaptureHookMap
+}
+
+type CaptureSegmentFlags = {
+  active: boolean
+}
+
+interface CaptureHook {
+  (query: string, capture: Capture, segment: CaptureSegment): void
+}
+
+interface CaptureEvent {
+  x: number
+  y: number
+}
+
+type CaptureHookMap = Map<string, CaptureHook>
+
+class Capture {
+
+  /* 
+  ================
+      STATIC
+  ================
+  */
+
+  static instances:             Map<string, Capture> = new Map()
+  static events:                CaptureEvent[] = []
+  static touchStart:            {x: number, y: number} = {x: 0, y: 0}
+  static scrollWidget:          HTMLElement
+  static scrollWidgetPosition:  Vector2
+  static scrollWidgetSize:      number = 24 //@todo store this somewhere so the Sass value is also derived from there. I guess I could just style the widget in this class tho.
+  static mouse:                 {positionClient: Vector2, positionPage: Vector2, buttons: {0: boolean, 1: boolean, 2: boolean}}
+
+  /* flags */
+  static isInitialized:         boolean = false
+  static isScrollwidgetVisible: boolean = false
+  static isMovedSinceMMBclick:  boolean = false
+
+  static frameUpdate() {
+    
+    // @todo technically there is no use for the X coordinate of the moveVector, it just seems like it could become useful in the future, so Idk yet. Like a 2D scrolling, a trackpad sort of thing.
+    // there could genuinely be some cool uses for it in the future
+
+    const moveVector: Vector2 = {x: sum(...this.events.map(e => e.x)) ?? 0, y: sum(...this.events.map(e => e.y)) ?? 0}
+
+    if(this.isScrollwidgetVisible) {
+      const speed = 0.04 // 0.0 -> 1.0
+      const minDistance = 12 //in px from the widget's center
+      const diffY = (this.mouse.positionClient.y - this.scrollWidgetPosition.y)
+
+      if(Math.abs(diffY) > minDistance) {
+        /* basic linear */
+        // moveVector.y += diffY * speed 
+
+        /* a little power-of-two magic dust */
+        moveVector.y += (diffY + (Math.abs(diffY) * diffY/150)) * speed 
+      }
+    }
+
+    if(moveVector.y !== 0) {
+      this.instances.forEach(capture => {
+
+        const isAtBoundsAndWouldNotChange = 
+        (moveVector.y >= 0 && capture.scroll === capture.getTotalSegmentLength())
+        || (moveVector.y <= 0 && capture.scroll === 0)
+
+        if(isAtBoundsAndWouldNotChange) return //return if the move vector would not produce meaningful change
+
+        const globalMult = 1
+        const increment = moveVector.y * globalMult
+
+        capture.scroll = clamp(capture.scroll + increment, 0, sum(...capture.segments.map(s => s.height)))
+        console.log("-------------Instance update---------------")
+        console.log("Capture.scroll: ", capture.scroll)
+
+        let activeSegmentIndex = 0
+        let accumulator = 0
+        
+        while(
+          capture.scroll >= 0
+          && capture.scroll > accumulator + capture.segments[0].height
+          && activeSegmentIndex < capture.segments.length - 1 
+          && activeSegmentIndex >= 0
+        ) {
+          console.log("accumulator update")
+          accumulator += capture.segments[activeSegmentIndex].height
+          activeSegmentIndex++
+        }
+
+        capture.activeSegmentIndex = activeSegmentIndex
+
+        capture.segments.forEach((segment, index) => {
+
+          if(activeSegmentIndex < index) {
+            segment.scroll = 0
+          } else
+
+          if(activeSegmentIndex > index) {
+            segment.scroll = segment.height
+          } else 
+
+          if(activeSegmentIndex === index) {
+            segment.scroll = capture.scroll - accumulator
+            segment.scroll = clamp(segment.scroll, 0, segment.height)
+            console.log("activeSegmentIndex", activeSegmentIndex)
+            console.log("segment.scroll", segment.scroll)
+          } else
+            
+          {
+            throw new Error("This should not happen.")
+          }
+
+          segment.hooks.forEach((hook, query) => {
+            hook(query, capture, segment)
+          })
+        })
+      })
+    }
+    
+    
+    //I do the emptying here, but it might change, so far I am only accumulating scroll events and those resolve to a Vector2
+    this.events = [] 
+  }
+
+  static init() {
+    if(this.isInitialized) return
+
+    this.mouse = {positionClient: {x: 0, y: 0}, positionPage: {x: 0, y: 0}, buttons: {0: false, 1: false, 2: false}}
+    
+    document.addEventListener("wheel", (e) => {
+      e.preventDefault()
+      this.events.push({x: e.deltaX, y: e.deltaY})
+    }, {passive: false})
+
+    document.addEventListener("mousedown", (e) => {
+      this.isMovedSinceMMBclick = false //doesn't matter what button it was this time, the widget should show regardless
+      const target = e.target as HTMLElement //@todo this could possibly fail??? but I don't think so.
+
+       //show widget if MMB click and does not produce meaningful result; trying to mimic default WinOS behavior
+      if(target
+        && e.button === 1 
+        && target.closest("a") === null
+        && target.closest("button") === null
+        && target.closest("area") === null
+      ) {
+        this.scrollWidgetShow(e)
+      }
+      else {
+        this.scrollWidgetHide()
+      }
+
+      if(e.button === 0) this.mouse.buttons[0] = true
+      if(e.button === 1) this.mouse.buttons[1] = true
+      if(e.button === 2) this.mouse.buttons[2] = true
+    })
+
+    document.addEventListener("mouseup", (e) => {
+      if(this.mouse.buttons[1] && this.isMovedSinceMMBclick === true) {
+        this.scrollWidgetHide()
+      }
+
+      if(e.button === 0) this.mouse.buttons[0] = false
+      if(e.button === 1) this.mouse.buttons[1] = false
+      if(e.button === 2) this.mouse.buttons[2] = false
+    })
+
+    document.addEventListener("mousemove", (e) => {
+      if(this.mouse.buttons[1]) {
+        this.isMovedSinceMMBclick = true
+      }
+
+      this.mouse.positionClient.x = e.clientX
+      this.mouse.positionClient.y = e.clientY
+      this.mouse.positionPage.x = e.pageX
+      this.mouse.positionPage.y = e.pageY
+    })
+
+    // @todo unscrupulous mobile code
+    // successful tests on: 
+    // • Xiaomi Redmi Note 8, Brave browser
+    document.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        this.touchStart.y = e.touches[0].clientY;
+        this.touchStart.x = e.touches[0].clientX;
+
+        if (window.scrollY === 0) {
+          e.preventDefault(); // should block pull-down refresh ?? @todo insufficiently tested on various mobile browsers
+        }
+      }
+    }, {passive: false});
+
+    document.addEventListener("touchmove", (e) => {
+      if (e.touches.length === 1) {
+        const event = {x: this.touchStart.x - e.touches[0].clientX, y: this.touchStart.y - e.touches[0].clientY}
+        this.events.push(event)
+        if (window.scrollY === 0 && event.y > 0) {
+          e.preventDefault(); // should block pull-down refresh @todo insufficiently tested on various mobile browsers
+        }
+        this.touchStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}
+      }
+    }, {passive: false});
+
+    this.scrollWidget = document.createElement("div")
+    this.scrollWidget.classList.add("widget", "widget--scroll")
+    this.scrollWidget.style.left = "calc(50vw - 10px)"
+    this.scrollWidget.style.top = "calc(50vh - 10px)"
+    this.scrollWidget.style.display = "none"
+    document.body.append(this.scrollWidget)
+
+    this.isInitialized = true
+  }
+
+  static scrollWidgetShow(e: MouseEvent) { //@todo I think the layout update should not happen here, actually; keep the updates to the rendering loop
+    if(this.isScrollwidgetVisible) return
+
+    this.scrollWidget.style.display = "block"
+    this.scrollWidgetPosition = {x: e.clientX, y: e.clientY}
+    this.scrollWidget.style.left = this.scrollWidgetPosition.x - (this.scrollWidgetSize/2) + "px"
+    this.scrollWidget.style.top =  this.scrollWidgetPosition.y - (this.scrollWidgetSize/2) + "px"
+    this.isScrollwidgetVisible = true
+  }
+
+  static scrollWidgetHide() {
+    if(!this.isScrollwidgetVisible) return
+
+    this.scrollWidget.style.display = "none"
+    this.isScrollwidgetVisible = false
+  }
+
+  /* 
+  ================
+      INSTANCE
+  ================
+  */
+
+  name:               string
+  scroll:             number
+  segments:           CaptureSegment[]
+  globalHooks:        CaptureHook[]
+  activeSegmentIndex: number
+  flags:              CaptureSegmentFlags
+
+  constructor(name: string) {
+    if(!Capture.isInitialized) throw new Error("Capture class not initialized yet. Please call Capture.init()")
+    if(Capture.instances.has(name)) throw new Error("Name already exists. Choose a new name for your capture.")
+
+    Capture.instances.set(name, this)
+
+    this.name = name
+    this.scroll = 0
+    this.segments = []
+    this.globalHooks = []
+    this.activeSegmentIndex = 0
+    this.flags = {active: false}
+  }
+
+  addSegment(segment: CaptureSegment) {
+    this.segments.push(segment)
+  }
+
+  addGlobalHook(hook: CaptureHook) { 
+    // @todo tbh I don't know what to do here, it sucks that these would be different, but maybe I can just call these CaptureMacro(s) and they have different parameters
+    // I'm still not sure for the usecase for this, all I can think of is making sure the API user can delineate global code from segment-local code
+    // which is useful for mental modeling, actually, so I think it's sufficient
+    /// . . . I'll try to implement this
+    this.globalHooks.push(hook)
+  }
+
+  getTotalSegmentLength(): number {
+    return sum(...this.segments.map(s => s.height))
+  }
+}
+
+document.addEventListener("click", () => {
+  console.log(getComputedStyle(document.body))
+})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+type AnimationBatch = {
+  batchname:    string
+  initialStyle: Partial<CSSStyleDeclaration>
+  queries:      Set<string>
+  elements:     HTMLElement[] //this is just the result of the 'queries' which are all run on Animate.batchRun() or Animate.batchDefine()
+}
+
+enum AnimationBatchState {
+  Initial,
+  Paused,
+  Running,
+  Finished,
+}
+
+type AnimationAction = 
+| {
+  type: "Animate", 
+  query: string, 
+  keyframes:  Keyframe[], 
+  options: KeyframeAnimationOptions, 
+  delayMS: number,
+}
+| {
+  type: "Set", 
+  query: string,
+  style: Partial<CSSStyleDeclaration>, 
+  attributes: Record<string, string>,
+}
+| {
+  type: "ClassAdd", 
+  query: string, 
+  classes: string[],
+}
+| {
+  type: "ClassRemove", 
+  query: string, 
+  classes: string[],
+}
+| {
+  type: "WaitMS",
+  durationMS: number,
+}
+| {
+  type: "WaitFor", 
+  query: string,
+}
+| {
+  type: "Then", 
+  function: Function,
+}
+| {
+  type: "ResetInitialStyle",
+  query: string,
+};
+
+
+enum AnimationErrorHandlingMethod {
+  Alert,
+  Log,
+  Error,
+}
+
+// this just means an animation branch is just a function that returns a promise so we can continue upon resolving, idk
+// it 'implicitly' also runs a bunch of animations but it literally is just some async code, which is better because it can be anything
+interface AnimationBranch {
+  (): Promise<unknown>;
+}
+
+
+
+class Animate {
+
+  /* 
+  ================
+      STATIC
+  ================
+  */
+
+  static batches: Map<string, AnimationBatch>
+  static batchCurrent: AnimationBatch
+
+  static batchDefine(
+      batchname: string,
+      queries: string[], //here this can be typed, @todo check that chatgpt log
+      initialStyle: Partial<CSSStyleDeclaration>,
+      errorHandlingMethod: AnimationErrorHandlingMethod,
+  ): void {
+    
+  }
+
+  static batchRun(): Animate {
+    return new Animate()
+  }
+
+  static queryCheck(query: string): void {
+    // tests whether a supplied CSS query is found in the queries defined with batchDefine(), this is necessary error-checking because I cannot force people to
+    // make enums out of their strings or something crazy like that to get complete type safety, because having to type everything as an enum would be so annoying I am willing to
+    // introduce this overhead
+    // we don't have string pointers so I cannot do much here
+  }
+
+  /* 
+  ================
+      INSTANCE
+  ================
+  */
+
+  batchname: string
+  batch: AnimationBatch
+  state: AnimationBatchState
+  actions: AnimationAction[]
+  actionCurrent: number
+
+  constructor() { //@todo just temporary fill-in with empty or useless stuff
+    this.batchname = ""
+    this.batch = {batchname: "", elements: [], initialStyle: {}, queries: new Set()}
+    this.state = AnimationBatchState.Initial
+    this.actions = []
+    this.actionCurrent = 0
+  }
+
+  actionDoNext(): void {
+    this.actionCurrent++
+    const action = this.actions[this.actionCurrent]
+
+    switch(action.type) {
+      case "Animate": {
+        
+        break
+      }
+      case "Set": {
+        
+        break
+      }
+      case "ClassAdd": {
+        
+        break
+      }
+      case "ClassRemove": {
+        
+        break
+      }
+      case "WaitMS": {
+        
+        break
+      }
+      case "WaitFor": {
+        
+        break
+      }
+      case "Then": {
+        
+        break
+      }
+      case "ResetInitialStyle": {
+        
+        break
+      }
+      default: {
+        const _exhaustiveCheck: never = action;
+        throw new Error(`Unhandled action: ${_exhaustiveCheck}`);
+      }
+    }
+  }
+  
+  animate() {
+  }
+
+  classAdd() {
+  }
+
+  classRemove() {
+  }
+
+  then(fn: AnimationBranch) {
+  }
+
+  thenAsync(fn: Function) {
+    // this method does not wait until resolving a promise, it just calls the function and moves on.
+    // @todo which is just the same as .then(), fuck me i guess?
+    // perhaps .then() does require a .thenComplete() to continue.
+  }
+
+  thenFail() {
+  }
+
+  thenSuccess() {
+  }
+
+  thenComplete() {
+  }
+  
+  waitMS() {
+  }
+
+  waitFor() { //wait for a specific anim to finish
+  }
+
+  waitTrigger() {
+
+  }
+}
+
+// ! a much better syntax that does not use the stupid dot(.) syntax, because now any custom logic can run betwen
+// the function animateButton is just a way to modularize a larger system of animations
+function DefineAnimation_Button {
+  const a = Animate
+
+  // begins a new definition of an animation "button", all subsequent operations pertain to this animation stored under the name "button"
+  a.batchDefineBegin("button", [".button"], {}, 0)
+
+  a.blabla1()
+  a.blabla2()
+
+  if(condition) {
+    a.blablaTrue()
+  } else {
+    a.blablaFalse()
+  }
+
+  for(let i = 0; i < 5; ++i) {
+    a.blabla("button", [{}], {duration: 100 * i})
+  }
+
+  // ends the definition for the animation sequence or logic that is "button"
+  Animate.batchDefineEnd("button")
+}
+
+//activates the animation "button"
+Animate.batchRun("button")
