@@ -79,26 +79,39 @@ interface Vector2 {
   y: number
 }
 
-const CJS_State = {
-  elements: new Map() as Map<string, HTMLElement>,
-  layers: [] as string[]
-}
-
-interface CJS_Transition_Options {
-  duration: number,
-  easing: Function
-}
-
 let timeLast = 0
 let timeDelta = 0
 
-// all animations, including Capture and various sequences reside here, it is run by the global tick function
-const CJS_Animations = []
+const CJS_State = {
+  elements: new Map()     as Map<string, HTMLElement>,
+  layers: []              as string[],
+  animationsActive: []    as CJS_Animation[],
+  animationsInactive: []  as CJS_Animation[],
+}
+
+
+/* TYPES */
+// Capture,       // reacts to scroll and uses the scroll hooks
+// EventDriven,   // reacts to events, event-driven
+// Sequence,      // sequence of various keyframes
+
+interface CJS_Animation {
+  type:         "Capture" | "EventDriven" | "Sequence",
+  elementId:    string,
+  duration:     number,
+  currentTime:  number,
+  easing:       Function,
+  keyframes:    CJS_AnimationKeyframe[],
+}
+
+interface CJS_AnimationKeyframe {
+  style: CJS_Style,
+}
 
 /** @todo this should be something akin to an API so that users can explicitly redefine what is allowed if they truly dislike the restrictions placed here */
 type CJS_Style = Omit<Partial<CSSStyleDeclaration>, "margin" | "padding" | "border" | "transition" | "animation" >;
 
-/** 
+/**
  * Creates an HTMLElement.
  * 
  * Data: a = attributes, c = classnames, d = dataset, s = style, h = innerHTML.
@@ -125,9 +138,7 @@ function CJS_H(id: string, tagname: string, data: {c?: [string, string][], a?: [
     }
   }
 
-  if(data.h) {
-    element.innerHTML = data.h
-  }
+  element.innerHTML = data.h ?? element.innerHTML
 
   CJS_State.elements.set(id, element)
 
@@ -151,59 +162,88 @@ function CJS_Reappend(newParent: HTMLElement, children: HTMLElement[]) {
   newParent.append(...children)
 }
 
-function CJS_Transition_Hover(elementId: string, style: CJS_Style, options: CJS_Transition_Options) {
-  const element = CJS_Id(elementId)
-  const old = {...element.style}
+function CJS_Animate(animation: CJS_Animation) {
+  CJS_State.animationsActive.push(animation)
+}
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function CJS_Animate_Transition(animationIn: CJS_Animation, animationOut: CJS_Animation) {
+  const element =   CJS_Id(animationIn.elementId)
+
+  //trigger the first anim
   element.onmouseenter = () => {
-    for(const key in style) {
-      element.style[key] = String(style[key])
-    }
+    const anim = animationIn
+    CJS_State.animationsActive.push(anim)
+    CJS_State.animationsInactive = CJS_State.animationsInactive.filter(a => a !== anim)
   }
+  //trigger the second anim
   element.onmouseleave = () => {
-    for(const key in style) {
-      element.style[key] = old[key]
-    }
+    const anim = animationOut
+    CJS_State.animationsActive.push(anim)
+    CJS_State.animationsInactive = CJS_State.animationsInactive.filter(a => a !== anim)
+  }
+
+  CJS_State.animationsInactive.push(animationIn)
+}
+
+
+// mockup of a updater function for an animation
+function updateAnimationObjectOrSomething() {
+  // this sucks but lets just use the first keyframe lol
+  const styleNew = animationIn.keyframes[0].style
+  const styleOld =  {...element.style}
+
+  for(const key in styleNew) {
+    element.style[key] = String(styleNew[key])
+  }
+  for(const key in styleNew) {
+    element.style[key] = old[key]
   }
 }
 
-function CJS_Transition_Hover_Enter(element: HTMLElement, style: CJS_Style) {
-  
-}
 
-function CJS_Transition_Hover_Leave(element: HTMLElement, style: CJS_Style) {
 
-}
 
-// function CJS_Rule(onParentId: string, CSSQuery: string) {
-  
-// }
 
-// /** Begins the procedural loop that creates the entire webpage. */
-// function CJS_Begin() {
 
-// }
 
-// /** Ends the procedural loop that creates the entire webpage. */
-// function CJS_End() {
 
-// }
 
-// function CJS_LayerBegin() {
 
-// }
 
-// function CJS_LayerEnd() {
 
-// }
+
+
+
+
+
+
 
 function CJS_Tick(timeCurrent: number) {
   timeCurrent *= 0.001;
   timeDelta = timeCurrent - timeLast;
   timeLast = timeCurrent;
 
-  CJS_Animations.forEach(anim => {
-    anim
+  /* Update all animations here */
+  CJS_State.animationsActive.forEach(anim => {
+    
   })
 
   window.requestAnimationFrame(CJS_Tick)
@@ -226,34 +266,33 @@ function Component_Calculator() {
   }
 
   CJS_H("calculator-frame", "div", {s: {
-    display: "grid", 
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gridAutoRows: "60px",
-    gridAutoFlow: "row",
-    gap: gap,
-    width: "320px",
-    paddingTop:     "24px",
-    paddingRight:   "24px",
-    paddingBottom:  "24px",
-    paddingLeft:    "24px",
-    borderRadius: borderRadius,
-    backgroundColor: colors.bg0,
-    color: colors.text,
-    font: fontFamilyDefault,
+    display:              "grid", 
+    gridTemplateColumns:  "repeat(4, 1fr)",
+    gridAutoRows:         "60px",
+    gridAutoFlow:         "row",
+    gap:                  gap,
+    width:                "320px",
+    paddingTop:           "24px",
+    paddingRight:         "24px",
+    paddingBottom:        "24px",
+    paddingLeft:          "24px",
+    borderRadius:         borderRadius,
+    backgroundColor:      colors.bg0,
+    color:                colors.text,
+    font:                 fontFamilyDefault,
     
   }})
 
   CJS_H("calculator-screen", "div", {s: {
-    display: "flex",
-    gridColumn: "span 4",
-    gridRow: "span 2",
-    paddingTop:     "12px",
-    paddingRight:   "12px",
-    paddingBottom:  "12px",
-    paddingLeft:    "12px",
-    borderRadius: borderRadius,
+    display:          "flex",
+    gridColumn:       "span 4",
+    gridRow:          "span 2",
+    paddingTop:       "12px",
+    paddingRight:     "12px",
+    paddingBottom:    "12px",
+    paddingLeft:      "12px",
+    borderRadius:     borderRadius,
     backgroundColor: "#32363bff",
-
   }})
 
   CJS_Append("calculator-frame", [
@@ -266,7 +305,7 @@ function Component_Calculator() {
     "C",
     "Del",
 
-    `1⁄x`,
+    `1/x`,
 
     `<math xmlns="http://www.w3.org/1998/Math/MathML">
       <msup>
@@ -301,17 +340,17 @@ function Component_Calculator() {
   ]
   
   const buttonStyleBase: CJS_Style = {
-      display: "flex",
-      alignItems: "center",
+      display:        "flex",
+      alignItems:     "center",
       justifyContent: "center",
-      gridColumn: "span 1",
-      borderRadius: borderRadius,
-      fontFamily: fontFamilyDefault,
-      borderStyle: "none",
-      fontWeight: "700",
-      fontSize: "1rem",
-      cursor: "pointer",
-      userSelect: "none",
+      gridColumn:     "span 1",
+      borderRadius:   borderRadius,
+      fontFamily:     fontFamilyDefault,
+      borderStyle:    "none",
+      fontWeight:     "700",
+      fontSize:       "1rem",
+      cursor:         "pointer",
+      userSelect:     "none",
     }
 
   for(let i = 0; i < texts.length; ++i) {
@@ -329,7 +368,11 @@ function Component_Calculator() {
   }})
   CJS_Append("calculator-frame", [equalsButton])
 
-  CJS_Transition_Hover("calculator-button-equals", {transform: "scale(1.05)"}, {duration: 0, easing: lerp})
+  CJS_Animate_Transition({type: "EventDriven", elementId: "calculator-button-equals", duration: 500, currentTime: 0, easing: lerp, keyframes: [
+    {style: {
+      
+    }}
+  ]})
 
   return CJS_Id("calculator-frame")
 }

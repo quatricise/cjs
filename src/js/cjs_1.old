@@ -860,7 +860,7 @@ class Animate {
   actions: AnimationAction[]
   actionCurrent: number
 
-  constructor() { //@todo just temporary fill-in with empty or useless stuff
+  constructor() { //@todo just temporary zero-out
     this.batchname = ""
     this.batch = {batchname: "", elements: [], initialStyle: {}, queries: new Set()}
     this.state = AnimationBatchState.Initial
