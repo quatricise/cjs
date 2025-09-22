@@ -8,11 +8,11 @@ function $h(query: string): HTMLElement {
 }
 
 /** Query the document to get a single element matching the query (similar to querySelectorAll, but returns an array, instead of Nodelist) */
-function $ha(query: string, errors: boolean = true): HTMLElement[] {
+function $ha(query: string, throwError: boolean = true): HTMLElement[] {
   const elements = Array.from(document.querySelectorAll(query));
 
   if (!elements || elements.length === 0) {
-    if (errors) {
+    if (throwError) {
       console.error("$ha: Error", elements)
       throw new Error("$ha: No HTMLElements found by query: ${query}. \n Maybe you wanted to look for MathMLElement or SVGElement? If so, use $m/$ma or $s/$sa functions instead.");
     } 
@@ -22,7 +22,7 @@ function $ha(query: string, errors: boolean = true): HTMLElement[] {
   }
     
   if(elements.every((e) => e instanceof HTMLElement) === false) {
-    if(errors) {
+    if(throwError) {
       console.error("$ha: Error", elements)
       throw new Error("$ha: Not every element found is an HTMLElement.")
     } 
@@ -90,18 +90,20 @@ const CJS_State = {
 }
 
 
+
 /* TYPES */
 // Capture,       // reacts to scroll and uses the scroll hooks
 // EventDriven,   // reacts to events, event-driven
 // Sequence,      // sequence of various keyframes
-
 interface CJS_Animation {
-  type:         "Capture" | "EventDriven" | "Sequence",
-  elementId:    string,
-  duration:     number,
-  currentTime:  number,
-  easing:       Function,
-  keyframes:    CJS_AnimationKeyframe[],
+  type:           "Capture" | "EventDriven" | "Sequence",
+  elementId:      string,
+  duration:       number,
+  currentTime:    number,
+  easing:         Function,
+  scrollHeight:   number, //for Capture only
+  scrollCurrent:  number, //for Capture only - is the current scroll
+  keyframes:      CJS_AnimationKeyframe[],
 }
 
 interface CJS_AnimationKeyframe {
@@ -193,6 +195,7 @@ function CJS_Animate_Transition(animationIn: CJS_Animation, animationOut: CJS_An
     CJS_State.animationsActive.push(anim)
     CJS_State.animationsInactive = CJS_State.animationsInactive.filter(a => a !== anim)
   }
+
   //trigger the second anim
   element.onmouseleave = () => {
     const anim = animationOut
@@ -202,6 +205,10 @@ function CJS_Animate_Transition(animationIn: CJS_Animation, animationOut: CJS_An
 
   CJS_State.animationsInactive.push(animationIn)
 }
+
+
+
+
 
 
 // mockup of a updater function for an animation
@@ -218,6 +225,26 @@ function updateAnimationObjectOrSomething() {
   }
 }
 
+
+
+
+
+
+// well this shit sucks - CSS does random crap and getComputedStyle does not work well. That's a nightmare scenario. I can't fix that, it would be too tricky, to correctly
+// parse everything into the exact format for color and grid spacing and whatever.
+function CJS_Expect(elementId: string, style: CJS_Style) {
+  const element = CJS_Id(elementId)
+  const computed = window.getComputedStyle(element)
+  const changes: string[] = []
+  
+  for(const key in style) {
+    if(style[key] !== computed[key]) {
+      changes.push(`--${key} \nExpected: ${style[key]},\nGot: ${computed[key]}`)
+    }
+  }
+  const errorMessage = `\nStyle for element #${elementId} has changed from expected values.\n\n${changes.join("\n\n")}\n`
+  assert(changes.length === 0, errorMessage)
+}
 
 
 
@@ -243,7 +270,7 @@ function CJS_Tick(timeCurrent: number) {
 
   /* Update all animations here */
   CJS_State.animationsActive.forEach(anim => {
-    
+
   })
 
   window.requestAnimationFrame(CJS_Tick)
@@ -253,19 +280,19 @@ window.addEventListener("load", () => {
   CJS_Tick(0)
 })
 
+let calculatorFrameStyle: CJS_Style = {}
 
 function Component_Calculator() {
   const gap = "6px"
   const borderRadius = "8px"
   const fontFamilyDefault = "monospace"
   const colors = {
-    bg0: "#f3edeaff",
-    bg1: "#cec7c4ff",
-    text: "#242424ff",
-    accent: "#fe8020",
+    bg0:    "rgb(243, 237, 234)",
+    bg1:    "rgb(206, 199, 196)",
+    text:   "rgb(36, 36, 36)",
+    accent: "rgb(254, 128, 32)",
   }
-
-  CJS_H("calculator-frame", "div", {s: {
+  calculatorFrameStyle = {
     display:              "grid", 
     gridTemplateColumns:  "repeat(4, 1fr)",
     gridAutoRows:         "60px",
@@ -279,9 +306,10 @@ function Component_Calculator() {
     borderRadius:         borderRadius,
     backgroundColor:      colors.bg0,
     color:                colors.text,
-    font:                 fontFamilyDefault,
-    
-  }})
+    fontFamily:           fontFamilyDefault,
+  }
+
+  const calculatorFrame = CJS_H("calculator-frame", "div", {s: calculatorFrameStyle})
 
   CJS_H("calculator-screen", "div", {s: {
     display:          "flex",
@@ -340,18 +368,18 @@ function Component_Calculator() {
   ]
   
   const buttonStyleBase: CJS_Style = {
-      display:        "flex",
-      alignItems:     "center",
-      justifyContent: "center",
-      gridColumn:     "span 1",
-      borderRadius:   borderRadius,
-      fontFamily:     fontFamilyDefault,
-      borderStyle:    "none",
-      fontWeight:     "700",
-      fontSize:       "1rem",
-      cursor:         "pointer",
-      userSelect:     "none",
-    }
+    display:        "flex",
+    alignItems:     "center",
+    justifyContent: "center",
+    gridColumn:     "span 1",
+    borderRadius:   borderRadius,
+    fontFamily:     fontFamilyDefault,
+    borderStyle:    "none",
+    fontWeight:     "700",
+    fontSize:       "1rem",
+    cursor:         "pointer",
+    userSelect:     "none",
+  }
 
   for(let i = 0; i < texts.length; ++i) {
     const button = CJS_H(`calculator-button-generic-${i}`, "button", {h: texts[i], s: {
@@ -368,11 +396,11 @@ function Component_Calculator() {
   }})
   CJS_Append("calculator-frame", [equalsButton])
 
-  CJS_Animate_Transition({type: "EventDriven", elementId: "calculator-button-equals", duration: 500, currentTime: 0, easing: lerp, keyframes: [
-    {style: {
+  // CJS_Animate_Transition({type: "EventDriven", elementId: "calculator-button-equals", duration: 500, currentTime: 0, easing: lerp, keyframes: [
+  //   {style: {
       
-    }}
-  ]})
+  //   }}
+  // ]})
 
   return CJS_Id("calculator-frame")
 }
@@ -394,4 +422,7 @@ function Component_Calculator() {
   CJS_Append("main", [calculator])
 
   document.body.append(main)
+
+  // here you test
+  CJS_Expect("calculator-frame", calculatorFrameStyle)
 })();
