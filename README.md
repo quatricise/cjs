@@ -34,10 +34,14 @@ Create an HTML file and include a script tag that points to your app - you're do
 
 ## No style polyfills
 
-You have to do this yourself, unfortunately. The reasoning here is that in order to do this properly I would have to begin flirting with Sass or Tailwind and other CSS frameworks and
-the integration work would be super annoying. Unless I change my mind, this goes against the philosophy of this project, which is to have a single file and that's it.
+You have to do this yourself, unfortunately. But it's only something you have to do for the cases where it matters - if you need not support old browsers, which most people don't. Just don't give a shit. 
 
-That philosophy is based on that of (read: stolen from) Sean Barrett's who created his `nothings` in order to create some general functionality he can always use in a project without having to worry about whether it works and the file was merely just a bunch of useful stuff that replaces or augments some features of the C language and the std library.
+The reasoning here is that in order to do this properly I would have to either:
+- A: do this myself and maintain that capability so that other people can rely on it
+- B: begin flirting with Sass or Tailwind and other CSS frameworks and the integration work to get them working with my system goes against the philosophy of this project, which is to have a single file.
+
+That philosophy is based on that of (read: stolen from) Sean Barrett's who created his `nothings` in order to have general functionality he can always use and rely on in a project without having to worry about whether it works. His files are simple utilities, merely just a bunch of useful stuff that replaces or augments some features of the C language and the std library. CJS aims to be a simple utitility
+allowing you to create any kind of website. You can totally just put custom markup into your pages and create whatever frankensteinian thing you want, I will just put my hands away and say "I don't like this.".
 
 ## Benefits and downsides of code over markup
 
