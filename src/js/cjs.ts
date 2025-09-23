@@ -1,5 +1,3 @@
-import "./lodash.js"
-
 /** Query the document to get a single element matching the query (standard querySelector) */
 function $h(query: string): HTMLElement {
   const element = document.querySelector(query);
@@ -372,8 +370,6 @@ function CJS_Animate_Sequence(animations: CJS_Animation_InitialData[]) {
 // mockup of a updater function for an animation
 // this would run each frame
 function updateAnimationObjectOrSomething() {
-
-  
   // once we compute styleNew, we just do this
   for(const key in styleNew) {
     element.style[key] = String(styleNew[key])
@@ -444,11 +440,11 @@ function CJS_Tick(timeCurrent: number) {
   CJS_State.animationsActive.forEach(anim => {
     if(anim.ended || anim.paused) return
 
-    const element = CJS_Id(anim.elementId)
-    const keyframe = anim.keyframes[anim.keyframeIndex]
-    const transformPropsRotate = ["rotateX", "rotateY", "rotateZ"] as (keyof CJS_StyleAnimated)[]
-    const transformPropsScale = ["scaleX", "scaleY", "scaleZ"] as (keyof CJS_StyleAnimated)[]
-    const transformPropsTranslate = ["translateX", "translateY", "translateZ"] as (keyof CJS_StyleAnimated)[]
+    const element =                 CJS_Id(anim.elementId)
+    const keyframe =                anim.keyframes[anim.keyframeIndex]
+    const transformPropsRotate =    ["rotateX", "rotateY", "rotateZ"]           as (keyof CJS_StyleAnimated)[]
+    const transformPropsScale =     ["scaleX", "scaleY", "scaleZ"]              as (keyof CJS_StyleAnimated)[]
+    const transformPropsTranslate = ["translateX", "translateY", "translateZ"]  as (keyof CJS_StyleAnimated)[]
     let transformString: string = ""
 
     transformPropsRotate.forEach(prop => {
@@ -692,7 +688,6 @@ function Component_Calculator() {
 
   const equalsButton = CJS_H(`calculator-button-equals`, "button", {h: "=", s: {
     ...buttonStyleBase,
-    position: "relative",
     backgroundColor: colors.accent,
   }})
   CJS_Append("calculator-frame", [equalsButton])
