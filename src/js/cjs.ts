@@ -1,3 +1,5 @@
+import "./lodash.js"
+
 /** Query the document to get a single element matching the query (standard querySelector) */
 function $h(query: string): HTMLElement {
   const element = document.querySelector(query);
@@ -25,7 +27,7 @@ function $ha(query: string, throwError: boolean = true): HTMLElement[] {
     if(throwError) {
       console.error("$ha: Error", elements)
       throw new Error("$ha: Not every element found is an HTMLElement.")
-    } 
+    }
     else {
       return []
     }
@@ -70,9 +72,38 @@ function camelToDashed(str: string): string {
   return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
 }
 
-function lerp(a: number, b: number, t: number): number {
+/**
+ * Bounce easing function.
+ * @param t Normalized time (0 to 1)
+ * @returns Eased value (0 to 1)
+*/
+function ease_OutBounce(t: number): number {
+    const n1 = 7.5625;
+    const d1 = 2.75;
+
+    if (t < 1 / d1) {
+        return n1 * t * t;
+    } else if (t < 2 / d1) {
+        t -= 1.5 / d1;
+        return n1 * t * t + 0.75;
+    } else if (t < 2.5 / d1) {
+        t -= 2.25 / d1;
+        return n1 * t * t + 0.9375;
+    } else {
+        t -= 2.625 / d1;
+        return n1 * t * t + 0.984375;
+    }
+}
+
+function ease_Lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
+
+function ease_Hold(a: number, b: number, t: number): number {
+  return a
+}
+
+type PartialExcept <T, K extends keyof T> = Partial<T> & Pick<T, K>;
 
 interface Vector2 {
   x: number,
@@ -87,7 +118,12 @@ const CJS_State = {
   layers: []              as string[],
   animationsActive: []    as CJS_Animation[],
   animationsInactive: []  as CJS_Animation[],
+  flags: {
+    debugStyles: false,
+  }
 }
+
+type CJS_Flags = typeof CJS_State.flags
 
 
 
@@ -96,22 +132,116 @@ const CJS_State = {
 // EventDriven,   // reacts to events, event-driven
 // Sequence,      // sequence of various keyframes
 interface CJS_Animation {
-  type:           "Capture" | "EventDriven" | "Sequence",
-  elementId:      string,
-  duration:       number,
-  currentTime:    number,
-  easing:         Function,
-  scrollHeight:   number, //for Capture only
-  scrollCurrent:  number, //for Capture only - is the current scroll
-  keyframes:      CJS_AnimationKeyframe[],
+  type:             "Capture" | "EventDriven" | "Sequence",
+  elementId:        string
+  timeTotal:        number
+
+  /** This number is calculated linearly.  */
+  timeCurrent:      number
+
+  /** Eased time Current, used to actually calculate values for the styles. */
+  timeCurrentEased: number
+
+  /** Changes how fast it goes. Can be used to smoothly slow down or speed up or to do a tape-stop effect instead of dead-reversing it when you want it to go backwards, for instance. */
+  timeRemap:        number
+
+  easeFn:           Function
+
+  // for EventDriven
+  triggerEvent:    keyof GlobalEventHandlersEventMap
+  triggerEventOut: keyof GlobalEventHandlersEventMap //for transitions this is just the event that causes the animation to run backwards
+
+  //for Capture only
+  scrollHeight:     number
+  scrollCurrent:    number
+
+  keyframes:        CJS_AnimationKeyframe[]
+  keyframeIndex:    number
+
+  ended:      boolean
+  running:    boolean
+  paused:     boolean
+  reversed:   boolean
+}
+
+type CJS_Animation_InitialData = PartialExcept<CJS_Animation, "type" | "elementId" | "timeTotal" | "keyframes">
+
+// I fucking hate this but interfaces suck so much
+function CJS_Create_Animation(initial: CJS_Animation_InitialData): CJS_Animation {
+  return {
+    type:             initial.type,
+    elementId:        initial.elementId,
+    timeTotal:        initial.timeTotal,
+    timeCurrent:      initial.timeCurrent ?? 0,
+    timeCurrentEased: 0,
+    timeRemap:        1,
+    easeFn:           initial.easeFn ?? ease_Lerp,
+    triggerEvent:     initial.triggerEvent ?? "mouseenter",
+    triggerEventOut:  initial.triggerEventOut ?? "mouseleave",
+    scrollHeight:     initial.scrollHeight ?? 0,
+    scrollCurrent:    initial.scrollCurrent ?? 0,
+    keyframes:        initial.keyframes ?? 0,
+    keyframeIndex:    0,
+    ended:            false,
+    running:          false,
+    paused:           false,
+    reversed:         false,
+  }
+}
+
+interface CJS_AnimationTimeline {
+  keyframes: CJS_AnimationKeyframe[]
+  duration: number
 }
 
 interface CJS_AnimationKeyframe {
-  style: CJS_Style,
+  style: CJS_StyleAnimated,
+
+  /** This is a fraction, so if your timeline has [1, 1, 2], these total to 4 and will stretch across the `duration` of the AnimationTimeline */
+  duration: number,
+}
+
+interface CJS_AnimationValue {
+  type: "%" | "vw" | "vh" | "px" | "vmin" | "vmax"
+  value: number
 }
 
 /** @todo this should be something akin to an API so that users can explicitly redefine what is allowed if they truly dislike the restrictions placed here */
 type CJS_Style = Omit<Partial<CSSStyleDeclaration>, "margin" | "padding" | "border" | "transition" | "animation" >;
+
+// this shit might be necessary. I simply have to define my own style for animating and use that instead of the general style, 
+// cos I need the number math available at all places without removing "px" | "vw" etc. from a string each fucking time I wanna blend numbers.
+type CJS_StyleAnimated = {
+
+  // these all compile down to a singular transform: this would be in the final blending phase of all animation changes. That is done in the update loop.
+  // they go in this order, as it felt sensible to me
+  scaleX?: number
+  scaleY?: number
+  scaleZ?: number
+  rotateX?: number
+  rotateY?: number
+  rotateZ?: number
+  translateX?: number
+  translateY?: number
+  translateZ?: number
+
+  top?: number
+  right?: number
+  bottom?: number
+  left?: number
+  
+  paddingTop?: number
+  paddingRight?: number
+  paddingBottom?: number
+  paddingLeft?: number
+
+  marginTop?: number
+  marginRight?: number
+  marginBottom?: number
+  marginLeft?: number
+
+  borderRadius?: number
+}
 
 /**
  * Creates an HTMLElement.
@@ -120,7 +250,7 @@ type CJS_Style = Omit<Partial<CSSStyleDeclaration>, "margin" | "padding" | "bord
  * 
  * **Notes:**
  * 
- * `data.h: innerHTML`: the unified way to handle element contents. Please do not use innerText. It is not advisable to add innerHTML in most circumstances, but it's okay for including a paragraph full of <br>'s and special characters and style tags such as <i> or <b>.
+ * `data.h: innerHTML`: the unified way to handle element contents. Please only use innerText when dealing with user input. It is not advisable to add innerHTML in most circumstances, but it's okay for including a paragraph full of <br>'s and special characters and style tags such as <i> or <b>.
  */
 function CJS_H(id: string, tagname: string, data: {c?: [string, string][], a?: [string, string][], d?: [string, string][], s?: CJS_Style, h?: string}): HTMLElement {
   assert(CJS_State.elements.has(id) === false, `Element id '${id}' already exists. Choose a unique identifier for this <${tagname}> element.`)
@@ -153,8 +283,20 @@ function CJS_Id(elementId: string): HTMLElement {
   return element as HTMLElement
 }
 
+function CJS_Ids(elementIds: string[]): HTMLElement[] {
+  const elements: HTMLElement[] = []
+  elementIds.forEach(id => {
+    const element = CJS_State.elements.get(id) as HTMLElement
+
+    //this check should still work cos it's runtime, and the "as HTMLElement" is just for the compiler
+    assert(element instanceof HTMLElement, `No element found by ID '${id}'.`)
+    elements.push(element)
+  })
+  return elements as HTMLElement[]
+}
+
 function CJS_Append(parentId: string, children: HTMLElement[]) {
-  assert(children.every(c => c.isConnected === false), `Some of the children are part of the DOM. This function does not allow replacing child positions; if you want that, call CJS_Reappend.`)
+  assert(children.every(c => c.isConnected === false && c.parentElement === null), `Some of the children are part of the DOM or connected to other nodes. This function does not allow replacing child positions; if you want that, call CJS_Reappend.`)
 
   const parent = CJS_Id(parentId)
   parent.append(...children)
@@ -164,59 +306,75 @@ function CJS_Reappend(newParent: HTMLElement, children: HTMLElement[]) {
   newParent.append(...children)
 }
 
-function CJS_Animate(animation: CJS_Animation) {
-  CJS_State.animationsActive.push(animation)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function CJS_Animate_Hover(initial: CJS_Animation_InitialData): CJS_Animation {
+  const element = CJS_Id(initial.elementId)
+  const anim = CJS_Create_Animation(initial)
+
+  // what if this function let you omit the first keyframe, because it seems natural you'd wanna go back to "no changes"
+  // but it also removes flexibility, so no, now it stays as it is
+  // anim.keyframes.unshift({style: {}, duration: 1,})
+
+  anim.triggerEvent =     "mouseenter"
+  anim.triggerEventOut =  "mouseleave"
+
+  element.addEventListener(anim.triggerEvent, () => {
+    console.log("Transition ✅")
+    
+    //@bug - weird...if this isn't here, sometimes the anim gets stuck at the last frame and never winds back down
+    // anim.timeCurrent = 0
+
+    anim.reversed = false
+    anim.ended = false
+    anim.paused = false
+
+    CJS_State.animationsInactive = CJS_State.animationsInactive.filter(a => a !== anim)
+    CJS_State.animationsActive.push(anim)
+  })
+
+  element.addEventListener(anim.triggerEventOut, () => {
+    console.log("Transition ❌")
+
+    // invert the animation keyframes
+    // the keyframes stay the same so modification to them would ideally translate to the inverted anim too.
+    anim.reversed = true
+    anim.ended = false
+    anim.paused = false
+
+    CJS_State.animationsInactive = CJS_State.animationsInactive.filter(a => a !== anim)
+    CJS_State.animationsActive.push(anim)
+  })
+
+  CJS_State.animationsInactive.push(anim)
+  return anim
 }
 
+function CJS_Animate_Sequence(animations: CJS_Animation_InitialData[]) {
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function CJS_Animate_Transition(animationIn: CJS_Animation, animationOut: CJS_Animation) {
-  const element =   CJS_Id(animationIn.elementId)
-
-  //trigger the first anim
-  element.onmouseenter = () => {
-    const anim = animationIn
-    CJS_State.animationsActive.push(anim)
-    CJS_State.animationsInactive = CJS_State.animationsInactive.filter(a => a !== anim)
-  }
-
-  //trigger the second anim
-  element.onmouseleave = () => {
-    const anim = animationOut
-    CJS_State.animationsActive.push(anim)
-    CJS_State.animationsInactive = CJS_State.animationsInactive.filter(a => a !== anim)
-  }
-
-  CJS_State.animationsInactive.push(animationIn)
 }
-
-
-
-
-
 
 // mockup of a updater function for an animation
+// this would run each frame
 function updateAnimationObjectOrSomething() {
-  // this sucks but lets just use the first keyframe lol
-  const styleNew = animationIn.keyframes[0].style
-  const styleOld =  {...element.style}
 
+  
+  // once we compute styleNew, we just do this
   for(const key in styleNew) {
     element.style[key] = String(styleNew[key])
   }
@@ -225,13 +383,6 @@ function updateAnimationObjectOrSomething() {
   }
 }
 
-
-
-
-
-
-// well this shit sucks - CSS does random crap and getComputedStyle does not work well. That's a nightmare scenario. I can't fix that, it would be too tricky, to correctly
-// parse everything into the exact format for color and grid spacing and whatever.
 function CJS_Expect(elementId: string, style: CJS_Style) {
   const element = CJS_Id(elementId)
   const computed = window.getComputedStyle(element)
@@ -246,7 +397,13 @@ function CJS_Expect(elementId: string, style: CJS_Style) {
   assert(changes.length === 0, errorMessage)
 }
 
-
+function CJS_SetFlags(flags: Partial<CJS_Flags>) {
+  for(const key in flags) {
+    if(key in CJS_State.flags) {
+      CJS_State.flags[key as keyof CJS_Flags] = flags[key as keyof CJS_Flags]!;
+    }
+  }
+}
 
 
 
@@ -264,21 +421,113 @@ function CJS_Expect(elementId: string, style: CJS_Style) {
 
 
 function CJS_Tick(timeCurrent: number) {
-  timeCurrent *= 0.001;
   timeDelta = timeCurrent - timeLast;
   timeLast = timeCurrent;
 
   /* Update all animations here */
   CJS_State.animationsActive.forEach(anim => {
+    if(anim.ended || anim.paused) return
 
+    anim.timeCurrent += timeDelta * anim.timeRemap * (anim.reversed ? -1 : 1)
+
+    const timeNormalized = anim.timeCurrent / anim.timeTotal
+    const timeNormalizedEased = anim.easeFn(0, 1, timeNormalized)
+    console.log(`timeNormalized: ${timeNormalized} \n timeNormalizedEased: ${timeNormalizedEased}`)
+    anim.timeCurrentEased = ease_Lerp(0, anim.timeTotal, timeNormalizedEased)
+
+    // probably very slow calculation
+    anim.keyframeIndex = getCurrentKeyframe(anim.timeCurrentEased, anim.keyframes.map(k => k.duration), anim.timeTotal)
+    console.log(`Keyframe index: ${anim.keyframeIndex}`)
+  })
+
+  /* second pass where we combine certain props, such as transform */
+  CJS_State.animationsActive.forEach(anim => {
+    if(anim.ended || anim.paused) return
+
+    const element = CJS_Id(anim.elementId)
+    const keyframe = anim.keyframes[anim.keyframeIndex]
+    const transformPropsRotate = ["rotateX", "rotateY", "rotateZ"] as (keyof CJS_StyleAnimated)[]
+    const transformPropsScale = ["scaleX", "scaleY", "scaleZ"] as (keyof CJS_StyleAnimated)[]
+    const transformPropsTranslate = ["translateX", "translateY", "translateZ"] as (keyof CJS_StyleAnimated)[]
+    let transformString: string = ""
+
+    transformPropsRotate.forEach(prop => {
+      if(prop in keyframe.style) {
+        if(keyframe.style[prop] !== undefined) {
+          transformString += `${prop}(${keyframe.style[prop]}deg) `
+        }
+      }
+    })
+    transformPropsScale.forEach(prop => {
+      if(prop in keyframe.style) {
+        if(keyframe.style[prop] !== undefined) {
+          transformString += `${prop}(${keyframe.style[prop]}) `
+        }
+      }
+    })
+    transformPropsTranslate.forEach(prop => {
+      if(prop in keyframe.style) {
+        if(keyframe.style[prop] !== undefined) {
+          transformString += `${prop}(${keyframe.style[prop]}px) `
+        }
+      }
+    })
+
+    element.style.transform = transformString
+
+    console.log(transformString)
+
+    if(
+      (anim.timeCurrent >= anim.timeTotal && !anim.reversed) || 
+      (anim.timeCurrent < 0 && anim.reversed)
+    ) {
+      anim.ended = true
+      CJS_State.animationsActive = CJS_State.animationsActive.filter(a => a !== anim)
+      CJS_State.animationsInactive.push(anim)
+      console.log("Ended animation")
+    }
   })
 
   window.requestAnimationFrame(CJS_Tick)
 }
 
+function getCurrentKeyframe(
+  elapsed: number,
+  segmentLengths: number[],
+  totalDuration: number
+): number {
+  const totalUnits = sum(...segmentLengths)
+  const msPerUnit = totalDuration / totalUnits;
+
+  let accumulated = 0;
+  for (let i = 0; i < segmentLengths.length; i++) {
+    accumulated += segmentLengths[i] * msPerUnit;
+    if (elapsed < accumulated) {
+      return i;
+    }
+  }
+  return segmentLengths.length - 1; // if elapsed >= totalDuration
+}
+
 window.addEventListener("load", () => {
   CJS_Tick(0)
 })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 let calculatorFrameStyle: CJS_Style = {}
 
@@ -382,25 +631,86 @@ function Component_Calculator() {
   }
 
   for(let i = 0; i < texts.length; ++i) {
-    const button = CJS_H(`calculator-button-generic-${i}`, "button", {h: texts[i], s: {
+    const buttonId = `calculator-button-generic-${i}`
+    const button = CJS_H(buttonId, "button", {h: texts[i], s: {
       ...buttonStyleBase,
       backgroundColor: colors.bg1,
     }})
 
     CJS_Append("calculator-frame", [button])
+
+    
+  CJS_Animate_Hover({
+    type: "EventDriven",
+    elementId: buttonId,
+    timeTotal: 750,
+    keyframes: [
+    {
+      duration: 1,
+      style: {}
+    },
+    {
+      duration: 1,
+      style: {
+        translateX: Math.random() * 20,
+        scaleX: 1.1,
+        scaleY: 1.1,
+      }
+    },
+    {
+      duration: 1,
+      style: {
+        scaleX: 1.2,
+        scaleY: 1.2,
+        translateX: 15,
+        translateY: 15,
+        rotateZ: 2,
+      }
+    },
+    {
+      duration: 1,
+      style: {
+        scaleX: 1.35,
+        scaleY: 1.35,
+        translateX: 20,
+        translateY: 20,
+        rotateZ: 5,
+      }
+    },
+    {
+      duration: 1,
+      style: {
+        scaleX: 1.42,
+        scaleY: 1.42,
+        translateX: 24,
+        translateY: 24,
+        rotateZ: 15,
+      }
+    },
+  ]})
   }
 
   const equalsButton = CJS_H(`calculator-button-equals`, "button", {h: "=", s: {
     ...buttonStyleBase,
+    position: "relative",
     backgroundColor: colors.accent,
   }})
   CJS_Append("calculator-frame", [equalsButton])
-
-  // CJS_Animate_Transition({type: "EventDriven", elementId: "calculator-button-equals", duration: 500, currentTime: 0, easing: lerp, keyframes: [
-  //   {style: {
-      
-  //   }}
-  // ]})
+  CJS_Animate_Hover({
+    type: "EventDriven",
+    elementId: "calculator-button-equals",
+    timeTotal: 150,
+    keyframes: [
+      {
+        duration: 1,
+        style: {scaleX: 1}
+      },
+      {
+        duration: 1,
+        style: {scaleX: 2}
+      },
+    ]
+  })
 
   return CJS_Id("calculator-frame")
 }
@@ -422,7 +732,39 @@ function Component_Calculator() {
   CJS_Append("main", [calculator])
 
   document.body.append(main)
-
-  // here you test
-  CJS_Expect("calculator-frame", calculatorFrameStyle)
 })();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// //just a showcase of using the bounce function 
+// function animateBounce(durationMS: number, callback: (value: number) => void, onend?: () => void) {
+//   const start = performance.now();
+
+//   function tick(now: number) {
+//     const elapsed = now - start;
+//     const t = Math.min(elapsed / durationMS, 1);
+//     callback(ease_OutBounce(t));
+//     if (t < 1) {
+//       requestAnimationFrame(tick)
+//     } else {
+//       onend?.()
+//     };
+//   }
+
+//   requestAnimationFrame(tick);
+// }
