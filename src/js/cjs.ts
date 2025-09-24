@@ -93,6 +93,39 @@ function ease_OutBounce(t: number): number {
     }
 }
 
+/**
+ * Bounce easing function with configurable number of bounces.
+ * @param t Normalized time (0–1)
+ * @param bounces Number of bounces (>=1)
+ * @param decay How much each bounce shrinks (0–1), default 0.5
+ * @returns Eased value (0–1)
+ */
+function ease_BounceVariable(t: number, bounces: number = 5, decay: number = 0.5): number {
+    if (t === 0 || t === 1) return t;
+
+    // Each bounce gets an interval
+    const interval = 1 / bounces;
+
+    // Which bounce are we in?
+    const i = Math.floor(t / interval);
+
+    // Local progress inside this bounce [0, 1]
+    const localT = (t - i * interval) / interval;
+
+    // Height of this bounce (decaying each time)
+    const height = Math.pow(decay, i);
+
+    // Simple parabola: peak in the middle
+    const bounce = 1 - 4 * (localT - 0.5) ** 2;
+
+    return 1 - height * (1 - bounce);
+}
+
+// Example usage
+for (let t = 0; t <= 1; t += 0.1) {
+    console.log(t.toFixed(2), ease_BounceVariable(t, 4).toFixed(3));
+}
+
 function ease_Lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
@@ -143,7 +176,7 @@ interface CJS_Animation {
   /** Changes how fast it goes. Can be used to smoothly slow down or speed up or to do a tape-stop effect instead of dead-reversing it when you want it to go backwards, for instance. */
   timeRemap:        number
 
-  easeFn:           Function
+  easeFn:           Function //@todo does not accept params, in case of the variable bounce effect that is necessary
 
   // for EventDriven
   triggerEvent:    keyof GlobalEventHandlersEventMap
@@ -207,7 +240,7 @@ interface CJS_AnimationValue {
 /** @todo this should be something akin to an API so that users can explicitly redefine what is allowed if they truly dislike the restrictions placed here */
 type CJS_Style = Omit<Partial<CSSStyleDeclaration>, "margin" | "padding" | "border" | "transition" | "animation" >;
 
-// this shit might be necessary. I simply have to define my own style for animating and use that instead of the general style, 
+// this shit might be necessary. I simply have to define my own style for animating and use that instead of the general style,
 // cos I need the number math available at all places without removing "px" | "vw" etc. from a string each fucking time I wanna blend numbers.
 type CJS_StyleAnimated = {
 
@@ -237,6 +270,21 @@ type CJS_StyleAnimated = {
   marginRight?: number
   marginBottom?: number
   marginLeft?: number
+
+  //color components
+  r?:   number
+  g?:   number
+  b?:   number
+  a?:   number
+
+  //background-color components
+  bgR?: number
+  bgG?: number
+  bgB?: number
+  bgA?: number
+
+  // @todo question is - what happens if you animate just the r or g or b channels - does the system just grab the color from getComputedStyle or from the style definition for the object?
+  // it would seem to make sense to take it from its style definition, which is on the object, just stored in the CJS_Style type.
 
   borderRadius?: number
 }
@@ -269,6 +317,10 @@ function CJS_H(id: string, tagname: string, data: {c?: [string, string][], a?: [
   }
 
   element.innerHTML = data.h ?? element.innerHTML
+  
+  // @todo assign the style object onto the element, or create CJS_Element because I want to extend the type to include custom shit
+  Object.assign(element, {CJS_Style: data.s ?? {}})
+  console.log(element.CJS_Style)
 
   CJS_State.elements.set(id, element)
 
@@ -286,7 +338,7 @@ function CJS_Ids(elementIds: string[]): HTMLElement[] {
   elementIds.forEach(id => {
     const element = CJS_State.elements.get(id) as HTMLElement
 
-    //this check should still work cos it's runtime, and the "as HTMLElement" is just for the compiler
+    //this check should still work cos it's runtime, and the "as HTMLElement" assertion above is just for the compiler
     assert(element instanceof HTMLElement, `No element found by ID '${id}'.`)
     elements.push(element)
   })
@@ -335,7 +387,8 @@ function CJS_Animate_Hover(initial: CJS_Animation_InitialData): CJS_Animation {
   element.addEventListener(anim.triggerEvent, () => {
     console.log("Transition ✅")
     
-    //@bug - weird...if this isn't here, sometimes the anim gets stuck at the last frame and never winds back down
+    // @bug - weird...if this isn't here, sometimes the anim gets stuck at the last frame and never winds back down
+    // 24-09-2025: not happening much anymore, but will keep an eye out
     // anim.timeCurrent = 0
 
     anim.reversed = false
@@ -445,6 +498,7 @@ function CJS_Tick(timeCurrent: number) {
     const transformPropsRotate =    ["rotateX", "rotateY", "rotateZ"]           as (keyof CJS_StyleAnimated)[]
     const transformPropsScale =     ["scaleX", "scaleY", "scaleZ"]              as (keyof CJS_StyleAnimated)[]
     const transformPropsTranslate = ["translateX", "translateY", "translateZ"]  as (keyof CJS_StyleAnimated)[]
+
     let transformString: string = ""
 
     transformPropsRotate.forEach(prop => {
@@ -651,6 +705,7 @@ function Component_Calculator() {
         translateX: Math.random() * 20,
         scaleX: 1.1,
         scaleY: 1.1,
+        r: 50
       }
     },
     {
@@ -661,6 +716,7 @@ function Component_Calculator() {
         translateX: 15,
         translateY: 15,
         rotateZ: 2,
+        r: 80
       }
     },
     {
@@ -671,6 +727,7 @@ function Component_Calculator() {
         translateX: 20,
         translateY: 20,
         rotateZ: 5,
+        r: 150
       }
     },
     {
@@ -681,6 +738,7 @@ function Component_Calculator() {
         translateX: 24,
         translateY: 24,
         rotateZ: 15,
+        r: 250
       }
     },
   ]})
@@ -703,6 +761,23 @@ function Component_Calculator() {
       {
         duration: 1,
         style: {scaleX: 2}
+      },
+    ]
+  })
+
+  CJS_Animate_Hover({
+    type: "Sequence",
+    elementId: "calculator-frame",
+    timeTotal: 1000,
+    easeFn: ease_BounceVariable,
+    keyframes: [
+      {
+        duration: 1,
+        style: {translateX: 0}
+      },
+      {
+        duration: 1,
+        style: {translateX: 100}
       },
     ]
   })
@@ -746,20 +821,20 @@ function Component_Calculator() {
 
 
 
-// //just a showcase of using the bounce function 
-// function animateBounce(durationMS: number, callback: (value: number) => void, onend?: () => void) {
-//   const start = performance.now();
+//just a showcase of using the bounce function 
+function animateBounce(durationMS: number, callback: (...args: any) => void, onend?: () => void) {
+  const start = performance.now();
 
-//   function tick(now: number) {
-//     const elapsed = now - start;
-//     const t = Math.min(elapsed / durationMS, 1);
-//     callback(ease_OutBounce(t));
-//     if (t < 1) {
-//       requestAnimationFrame(tick)
-//     } else {
-//       onend?.()
-//     };
-//   }
+  function tick(now: number) {
+    const elapsed = now - start;
+    const t = Math.min(elapsed / durationMS, 1);
+    callback(ease_BounceVariable(t, 5, 0.5));
+    if (t < 1) {
+      requestAnimationFrame(tick)
+    } else {
+      onend?.()
+    };
+  }
 
-//   requestAnimationFrame(tick);
-// }
+  requestAnimationFrame(tick);
+}
