@@ -70,6 +70,16 @@ function camelToDashed(str: string): string {
   return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
 }
 
+/** Custom logging so you can filter by id */
+function log(message: any, id: string = "") {
+  if(LOG_ONLY_IDS.length !== 0 && LOG_ONLY_IDS.find(logId => logId === id)) {
+    console.log(message)
+  }
+}
+
+/** The only messages that are logged are those with at least one of these IDs */
+const LOG_ONLY_IDS: string[] = ["keyframe stuff"]
+
 /**
  * Bounce easing function.
  * @param t Normalized time (0 to 1)
@@ -123,7 +133,7 @@ function ease_BounceVariable(t: number, bounces: number = 5, decay: number = 0.5
 
 // Example usage
 for (let t = 0; t <= 1; t += 0.1) {
-    console.log(t.toFixed(2), ease_BounceVariable(t, 4).toFixed(3));
+    log(t.toFixed(2), ease_BounceVariable(t, 4).toFixed(3));
 }
 
 function ease_Lerp(a: number, b: number, t: number): number {
@@ -189,6 +199,9 @@ interface CJS_Animation {
   keyframes:        CJS_AnimationKeyframe[]
   keyframeIndex:    number
 
+  /** Normalized between 0-1 */
+  keyframeProgress: number
+
   ended:      boolean
   running:    boolean
   paused:     boolean
@@ -213,6 +226,7 @@ function CJS_Create_Animation(initial: CJS_Animation_InitialData): CJS_Animation
     scrollCurrent:    initial.scrollCurrent ?? 0,
     keyframes:        initial.keyframes ?? 0,
     keyframeIndex:    0,
+    keyframeProgress: 0,
     ended:            false,
     running:          false,
     paused:           false,
@@ -228,17 +242,22 @@ interface CJS_AnimationTimeline {
 interface CJS_AnimationKeyframe {
   style: CJS_StyleAnimated,
 
+
+  // there are two ways to solve this time mapping issue — either each animation has timeRemap to slow it down and each keyframe has an absolute value in MS, or the animation has absolute value and keyframes are fractions of it.
+  // it actually currently is not clear to me which is better
+
   /** This is a fraction, so if your timeline has [1, 1, 2], these total to 4 and will stretch across the `duration` of the AnimationTimeline */
   duration: number,
 }
 
-interface CJS_AnimationValue {
-  type: "%" | "vw" | "vh" | "px" | "vmin" | "vmax"
-  value: number
-}
 
 /** @todo this should be something akin to an API so that users can explicitly redefine what is allowed if they truly dislike the restrictions placed here */
 type CJS_Style = Omit<Partial<CSSStyleDeclaration>, "margin" | "padding" | "border" | "transition" | "animation" >;
+
+interface CJS_Value {
+  type: "%" | "vw" | "vh" | "px" | "vmin" | "vmax"
+  value: number
+}
 
 // this shit might be necessary. I simply have to define my own style for animating and use that instead of the general style,
 // cos I need the number math available at all places without removing "px" | "vw" etc. from a string each fucking time I wanna blend numbers.
@@ -320,7 +339,9 @@ function CJS_H(id: string, tagname: string, data: {c?: [string, string][], a?: [
   
   // @todo assign the style object onto the element, or create CJS_Element because I want to extend the type to include custom shit
   Object.assign(element, {CJS_Style: data.s ?? {}})
-  console.log(element.CJS_Style)
+
+  //it works but does not compile, so I will make the custom type
+  log(element.CJS_Style)
 
   CJS_State.elements.set(id, element)
 
@@ -385,7 +406,7 @@ function CJS_Animate_Hover(initial: CJS_Animation_InitialData): CJS_Animation {
   anim.triggerEventOut =  "mouseleave"
 
   element.addEventListener(anim.triggerEvent, () => {
-    console.log("Transition ✅")
+    log("Transition ✅")
     
     // @bug - weird...if this isn't here, sometimes the anim gets stuck at the last frame and never winds back down
     // 24-09-2025: not happening much anymore, but will keep an eye out
@@ -400,7 +421,7 @@ function CJS_Animate_Hover(initial: CJS_Animation_InitialData): CJS_Animation {
   })
 
   element.addEventListener(anim.triggerEventOut, () => {
-    console.log("Transition ❌")
+    log("Transition ❌")
 
     // invert the animation keyframes
     // the keyframes stay the same so modification to them would ideally translate to the inverted anim too.
@@ -479,14 +500,13 @@ function CJS_Tick(timeCurrent: number) {
 
     anim.timeCurrent += timeDelta * anim.timeRemap * (anim.reversed ? -1 : 1)
 
-    const timeNormalized = anim.timeCurrent / anim.timeTotal
-    const timeNormalizedEased = anim.easeFn(0, 1, timeNormalized)
-    console.log(`timeNormalized: ${timeNormalized} \n timeNormalizedEased: ${timeNormalizedEased}`)
-    anim.timeCurrentEased = ease_Lerp(0, anim.timeTotal, timeNormalizedEased)
+    const timeNormalized = anim.timeCurrent / anim.timeTotal;
+    const timeNormalizedEased = anim.easeFn(0, 1, timeNormalized);
+    log(`timeNormalized: ${timeNormalized} \n timeNormalizedEased: ${timeNormalizedEased}`);
+    anim.timeCurrentEased = ease_Lerp(0, anim.timeTotal, timeNormalizedEased);
 
-    // probably very slow calculation
-    anim.keyframeIndex = getCurrentKeyframe(anim.timeCurrentEased, anim.keyframes.map(k => k.duration), anim.timeTotal)
-    console.log(`Keyframe index: ${anim.keyframeIndex}`)
+    ({keyframeIndex: anim.keyframeIndex, keyframeProgress: anim.keyframeProgress} = CJS_Animation_GetCurrentKeyframeData(anim.timeCurrentEased, anim.keyframes.map(k => k.duration), anim.timeTotal));
+    log(`keyframeIndex: ${anim.keyframeIndex}. keyframeProgress: ${anim.keyframeProgress}`, "keyframe stuff");
   })
 
   /* second pass where we combine certain props, such as transform */
@@ -500,6 +520,9 @@ function CJS_Tick(timeCurrent: number) {
     const transformPropsTranslate = ["translateX", "translateY", "translateZ"]  as (keyof CJS_StyleAnimated)[]
 
     let transformString: string = ""
+
+    //what we are missing is the part where the keyframe values are interpolated based on how far we are into a keyframe
+    //we need to interpolate between currentKeyframe and nextKeyframe based on the percentage of how far we are into a keyframe
 
     transformPropsRotate.forEach(prop => {
       if(prop in keyframe.style) {
@@ -525,7 +548,7 @@ function CJS_Tick(timeCurrent: number) {
 
     element.style.transform = transformString
 
-    console.log(transformString)
+    log(transformString)
 
     if(
       (anim.timeCurrent >= anim.timeTotal && !anim.reversed) || 
@@ -534,36 +557,60 @@ function CJS_Tick(timeCurrent: number) {
       anim.ended = true
       CJS_State.animationsActive = CJS_State.animationsActive.filter(a => a !== anim)
       CJS_State.animationsInactive.push(anim)
-      console.log("Ended animation")
+      log("Ended animation")
     }
   })
 
   window.requestAnimationFrame(CJS_Tick)
 }
 
-function getCurrentKeyframe(
-  elapsed: number,
-  segmentLengths: number[],
-  totalDuration: number
-): number {
-  const totalUnits = sum(...segmentLengths)
-  const msPerUnit = totalDuration / totalUnits;
-
-  let accumulated = 0;
-  for (let i = 0; i < segmentLengths.length; i++) {
-    accumulated += segmentLengths[i] * msPerUnit;
-    if (elapsed < accumulated) {
-      return i;
-    }
-  }
-  return segmentLengths.length - 1; // if elapsed >= totalDuration
-}
-
 window.addEventListener("load", () => {
   CJS_Tick(0)
 })
 
+// function getCurrentKeyframeData(
+//   elapsed: number,
+//   segmentLengths: number[],
+//   totalDuration: number
+// ): number {
+//   const totalUnits = sum(...segmentLengths)
+//   const msPerUnit = totalDuration / totalUnits;
 
+//   let accumulated = 0;
+//   for (let i = 0; i < segmentLengths.length; i++) {
+//     accumulated += segmentLengths[i] * msPerUnit;
+//     if (elapsed < accumulated) {
+//       return i;
+//     }
+//   }
+//   return segmentLengths.length - 1; // if elapsed >= totalDuration
+// }
+
+//@todo probably busted function, gotta rewrite this myself
+function CJS_Animation_GetCurrentKeyframeData(
+  elapsed: number,
+  segmentLengths: number[],
+  totalDuration: number
+): {keyframeIndex: number, keyframeProgress: number} {
+  assert(elapsed >= 0 && elapsed <= 1, "Elapsed:" + elapsed)
+  const totalUnits = sum(...segmentLengths)
+  const msPerUnit = totalDuration / totalUnits;
+
+  let accumulated = 0;
+  for (let k_index = 0; k_index < segmentLengths.length; k_index++) {
+    const segDuration = segmentLengths[k_index] * msPerUnit;
+
+    if (elapsed < accumulated + segDuration) {
+      const progress = (elapsed - accumulated) / segDuration;
+      return {keyframeIndex: k_index, keyframeProgress: progress};
+    }
+
+    accumulated += segDuration;
+  }
+
+  // If elapsed >= totalDuration, clamp at last keyframe
+  return {keyframeIndex: segmentLengths.length - 1, keyframeProgress: 0};
+}
 
 
 
@@ -803,38 +850,3 @@ function Component_Calculator() {
 
   document.body.append(main)
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//just a showcase of using the bounce function 
-function animateBounce(durationMS: number, callback: (...args: any) => void, onend?: () => void) {
-  const start = performance.now();
-
-  function tick(now: number) {
-    const elapsed = now - start;
-    const t = Math.min(elapsed / durationMS, 1);
-    callback(ease_BounceVariable(t, 5, 0.5));
-    if (t < 1) {
-      requestAnimationFrame(tick)
-    } else {
-      onend?.()
-    };
-  }
-
-  requestAnimationFrame(tick);
-}
